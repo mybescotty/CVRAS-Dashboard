@@ -80,6 +80,39 @@
   .stat-card.s3 .num { color: var(--status-3); }
   .stat-card.s4 .num { color: var(--status-4); }
 
+  .depot-filter {
+    margin: 0 24px 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 16px;
+  }
+  .depot-filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .depot-filter-header strong { font-size: .85rem; }
+  .depot-filter-actions { display: flex; gap: 6px; }
+  .depot-filter-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    max-height: 160px;
+    overflow-y: auto;
+    font-size: .82rem;
+  }
+  .depot-filter-list label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
   #depots { padding: 0 24px; }
   .depot-card {
     background: var(--card-bg);
@@ -208,6 +241,17 @@
 </div>
 
 <div class="stats-bar" id="statsBar"></div>
+
+<div id="depotFilter" class="depot-filter" style="display:none">
+  <div class="depot-filter-header">
+    <strong>Filter by Depot</strong>
+    <span class="depot-filter-actions">
+      <button type="button" class="btn" id="selectAllDepots">Select All</button>
+      <button type="button" class="btn" id="selectNoneDepots">Select None</button>
+    </span>
+  </div>
+  <div class="depot-filter-list" id="depotFilterList"></div>
+</div>
 
 <div id="depots"></div>
 
@@ -372,18 +416,19 @@ function renderSummary(records) {
   `;
 }
 
-function renderDepots(depotMap) {
-  const container = document.getElementById("depots");
-  container.innerHTML = "";
-
-  let depotNames = Array.from(depotMap.keys()).sort((a, b) => a.localeCompare(b));
+function getSortedDepotNames(depotMap) {
+  const depotNames = Array.from(depotMap.keys()).sort((a, b) => a.localeCompare(b));
   const noDepotIdx = depotNames.indexOf("(No Depot Assigned)");
   if (noDepotIdx !== -1) {
     depotNames.splice(noDepotIdx, 1);
     depotNames.push("(No Depot Assigned)");
   }
+  return depotNames;
+}
 
-  document.getElementById("emptyState").style.display = depotNames.length === 0 ? "block" : "none";
+function renderDepots(depotMap, depotNames) {
+  const container = document.getElementById("depots");
+  container.innerHTML = "";
 
   for (const depotName of depotNames) {
     container.appendChild(buildDepotCard(depotName, depotMap.get(depotName)));
@@ -395,6 +440,7 @@ function buildDepotCard(depotName, group) {
 
   const card = document.createElement("div");
   card.className = "depot-card";
+  card.dataset.depot = depotName;
 
   const header = document.createElement("div");
   header.className = "depot-header";
@@ -589,11 +635,64 @@ function fallbackCopy(text, onSuccess) {
   document.body.removeChild(ta);
 }
 
+const NO_DATA_MESSAGE = 'No data loaded yet. Upload a "First Bus Telematics Report" .xlsx file (with a "CVRAS List" sheet) to get started.';
+const NO_DEPOTS_SELECTED_MESSAGE = "No depots selected. Use the checkboxes above to select at least one depot to display.";
+
 let currentRecords = [];
 
 function renderAll(records) {
   renderSummary(records);
-  renderDepots(groupData(records));
+  const depotMap = groupData(records);
+  const depotNames = getSortedDepotNames(depotMap);
+  renderDepots(depotMap, depotNames);
+  renderDepotFilter(depotNames);
+  applyDepotFilter();
+}
+
+function renderDepotFilter(depotNames) {
+  const filterPanel = document.getElementById("depotFilter");
+  const list = document.getElementById("depotFilterList");
+  list.innerHTML = "";
+
+  if (depotNames.length === 0) {
+    filterPanel.style.display = "none";
+    return;
+  }
+  filterPanel.style.display = "block";
+
+  for (const name of depotNames) {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = true;
+    cb.dataset.depot = name;
+    cb.addEventListener("change", applyDepotFilter);
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(name));
+    list.appendChild(label);
+  }
+}
+
+function applyDepotFilter() {
+  const selected = new Set();
+  document.querySelectorAll("#depotFilterList input[type=checkbox]").forEach(cb => {
+    if (cb.checked) selected.add(cb.dataset.depot);
+  });
+
+  let anyVisible = false;
+  document.querySelectorAll(".depot-card").forEach(card => {
+    const visible = selected.has(card.dataset.depot);
+    card.style.display = visible ? "" : "none";
+    if (visible) anyVisible = true;
+  });
+
+  const emptyState = document.getElementById("emptyState");
+  if (anyVisible) {
+    emptyState.style.display = "none";
+  } else {
+    emptyState.textContent = NO_DEPOTS_SELECTED_MESSAGE;
+    emptyState.style.display = "block";
+  }
 }
 
 function handleFile(file) {
@@ -616,10 +715,20 @@ function handleFile(file) {
 
 function init() {
   document.getElementById("fileMeta").textContent = "No file loaded yet.";
+  document.getElementById("emptyState").textContent = NO_DATA_MESSAGE;
   document.getElementById("emptyState").style.display = "block";
 
   const dropZone = document.getElementById("dropZone");
   const fileInput = document.getElementById("fileInput");
+
+  document.getElementById("selectAllDepots").addEventListener("click", () => {
+    document.querySelectorAll("#depotFilterList input[type=checkbox]").forEach(cb => cb.checked = true);
+    applyDepotFilter();
+  });
+  document.getElementById("selectNoneDepots").addEventListener("click", () => {
+    document.querySelectorAll("#depotFilterList input[type=checkbox]").forEach(cb => cb.checked = false);
+    applyDepotFilter();
+  });
 
   dropZone.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", (e) => {
