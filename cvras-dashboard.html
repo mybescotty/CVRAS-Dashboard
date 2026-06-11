@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CVRAS Dashboard - First Bus Telematics Report</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --status-0: #d32f2f;
+    --status-1: #f57c00;
+    --status-2: #fbc02d;
+    --status-3: #1976d2;
+    --status-4: #388e3c;
+    --bg: #f4f6f8;
+    --card-bg: #ffffff;
+    --border: #d0d7de;
+    --text: #1f2933;
+    --muted: #6b7785;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0 0 40px;
+  }
+  header {
+    background: #003087;
+    color: #fff;
+    padding: 16px 24px;
+  }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 4px 0 0; font-size: .85rem; opacity: .85; }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 24px;
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+  }
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: .85rem;
+    color: var(--muted);
+  }
+  .upload-zone.dragover {
+    border-color: #003087;
+    background: #eef3ff;
+  }
+  .file-meta { font-size: .8rem; color: var(--muted); }
+
+  .stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 24px;
+  }
+  .stat-card {
+    flex: 1 1 140px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: center;
+  }
+  .stat-card .num { font-size: 1.6rem; font-weight: 700; }
+  .stat-card .lbl { font-size: .75rem; color: var(--muted); text-transform: uppercase; }
+  .stat-card.total .num { color: #003087; }
+  .stat-card.s0 .num { color: var(--status-0); }
+  .stat-card.s1 .num { color: var(--status-1); }
+  .stat-card.s2 .num { color: var(--status-2); }
+  .stat-card.s3 .num { color: var(--status-3); }
+  .stat-card.s4 .num { color: var(--status-4); }
+
+  #depots { padding: 0 24px; }
+  .depot-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .depot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #eef1f5;
+    cursor: pointer;
+  }
+  .depot-header h2 { margin: 0; font-size: 1.05rem; }
+  .depot-counts {
+    font-size: .78rem;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .depot-body { padding: 4px 16px 12px; }
+  .depot-body.collapsed { display: none; }
+
+  .status-group {
+    border-left: 5px solid #ccc;
+    margin: 10px 0;
+    border-radius: 4px;
+    background: #fafbfc;
+  }
+  .status-group.status-0 { border-left-color: var(--status-0); }
+  .status-group.status-1 { border-left-color: var(--status-1); }
+  .status-group.status-2 { border-left-color: var(--status-2); }
+  .status-group.status-3 { border-left-color: var(--status-3); }
+  .status-group.status-4 { border-left-color: var(--status-4); }
+
+  .status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .status-title {
+    font-weight: 600;
+    font-size: .9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: .75rem;
+    font-weight: 700;
+    color: #fff;
+    margin-left: 6px;
+  }
+  .badge.status-0 { background: var(--status-0); }
+  .badge.status-1 { background: var(--status-1); }
+  .badge.status-2 { background: var(--status-2); color: #3a3000; }
+  .badge.status-3 { background: var(--status-3); }
+  .badge.status-4 { background: var(--status-4); }
+
+  .status-actions { display: flex; gap: 6px; }
+  .btn {
+    font-size: .75rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: #fff;
+    cursor: pointer;
+  }
+  .btn:hover { background: #f0f3f7; }
+  .btn.email { border-color: #003087; color: #003087; }
+  .btn.copy { border-color: #555; color: #333; }
+  .btn.copy.copied { background: #d4edda; border-color: #28a745; color: #155724; }
+
+  .vehicle-table-wrap { overflow-x: auto; }
+  .vehicle-table-wrap.collapsed { display: none; }
+  table.vehicle-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .8rem;
+    margin: 0 0 8px;
+  }
+  table.vehicle-table th, table.vehicle-table td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  table.vehicle-table th { background: #f0f3f7; }
+  table.vehicle-table tr:nth-child(even) { background: #fafbfc; }
+
+  .toggle-icon {
+    display: inline-block;
+    transition: transform .15s;
+  }
+  .toggle-icon.open { transform: rotate(90deg); }
+
+  .empty-state { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>CVRAS Dashboard</h1>
+  <p>First Bus Telematics Report &mdash; Status of Buses on CVRAS Master List, grouped by Depot &amp; Latest Status</p>
+</header>
+
+<div class="toolbar">
+  <div id="dropZone" class="upload-zone">
+    Drop a "First Bus Telematics Report" .xlsx file here, or click to choose a file
+    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+  </div>
+  <div class="file-meta" id="fileMeta"></div>
+</div>
+
+<div class="stats-bar" id="statsBar"></div>
+
+<div id="depots"></div>
+
+<div id="emptyState" class="empty-state" style="display:none">
+  No data loaded. Upload a CVRAS Telematics Report .xlsx file.
+</div>
+
+<script>
+const STATUS_CONFIG = {
+  "0": { label: "0.CVRAS approval removed",   short: "Approval Removed",   color: "#d32f2f" },
+  "1": { label: "1.No Telematics",            short: "No Telematics",      color: "#f57c00" },
+  "2": { label: "2.No NOx Conversion",        short: "No NOx Conversion",  color: "#fbc02d" },
+  "3": { label: "3.Low NOx Conversion",       short: "Low NOx Conversion", color: "#1976d2" },
+  "4": { label: "4.OK",                       short: "OK",                 color: "#388e3c" },
+  "_other": { label: "Other / Unrecognised Status", short: "Other", color: "#757575" }
+};
+const STATUS_ORDER = ["0", "1", "2", "3", "4"];
+
+// Convert an Excel date serial number (1900 date system) to a JS Date.
+function excelSerialToDate(serial) {
+  const epoch = Date.UTC(1899, 11, 30);
+  return new Date(epoch + serial * 86400000);
+}
+
+// Decode the compact embedded array-of-arrays into full record objects.
+// Each row: [vrm, fleetNo, operator, depot, retrofit, caz, statusCode, removalSerialOrNull, newFailure]
+function decodeEmbedded(arr) {
+  return arr.map(r => ({
+    vrm: r[0],
+    fleetNo: r[1],
+    operator: r[2],
+    depot: r[3] || "(No Depot Assigned)",
+    retrofit: r[4],
+    caz: r[5],
+    status: r[6],
+    removalDate: r[7] != null ? excelSerialToDate(r[7]) : null,
+    newFailure: r[8]
+  }));
+}
+
+// Embedded dataset: First Bus Telematics Report 08/06/2026, "CVRAS List" sheet (882 rows)
+// Each row: [vrm, fleetNo, operator, depot, retrofit, caz, statusCode, removalSerialOrNull, newFailure]
+const EMBEDDED_DATA = [
+["3910WE","37229","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["AEZ7248","","York Pullman","","Eminox","Y","1",46213,"Stopped Reporting since last report"],["BD11CEN","69521","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD11CEO","69523","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BD11CEU","69522","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD11CEV","69524","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["BD11CEX","69527","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BD11CEY","69526","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD11CFA","69525","First South Yorks","Olive Grove","Eminox","N","0",46129,""],["BD11CFE","69531","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD11CFF","69530","First South Yorks","Olive Grove","Eminox","Y","2",46213,"Stopped Reporting since last report"],["BD11CFG","69528","First South Yorks","Olive Grove","Eminox","Y","4",null,""],
+["BD11CFJ","69529","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BD12TCJ","36280","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD12TCK","36276","First South Yorks","Doncaster","Eminox","Y","3",null,""],["BD12TCO","36275","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD12TCZ","36278","First South Yorks","Doncaster","Eminox","Y","4",null,""],["BD12TDO","36277","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["BD12TDU","36279","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BD12TDV","36274","First South Yorks","Doncaster","Eminox","Y","3",null,""],["BD13NFM","69567","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13NFN","69568","First West Yorkshire","Bradford","Eminox","N","0",46153,""],["BD13NFP","69566","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13NFR","69569","First West Yorkshire","Bradford","Eminox","Y","4",null,""],
+["BD13NFV","69570","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13OHK","69571","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13OHL","69572","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13OHN","69573","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13OHO","69574","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13OHP","69575","First West Yorkshire","Bradford","Eminox","Y","4",null,""],
+["BD13OHR","69576","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["BD13OHS","69577","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["BD13OHT","69578","First West Yorkshire","Halifax","HJS","Y","3",null,""],["BF12KWU","36249","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BF63HDN","69537","First South Yorks","Olive Grove","Eminox","Y","2",46213,"Stopped Reporting since last report"],["BF63HDO","69539","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["BF63HDU","69538","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BG12UKM","36248","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BG12YJF","36250","First South Yorks","Doncaster","Eminox","Y","3",null,""],["BG12YJO","36257","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BG12YJP","36258","First South Yorks","Doncaster","Eminox","Y","4",null,""],["BG12YJR","36259","First South Yorks","Doncaster","Eminox","Y","4",null,""],
+["BG12YJS","36260","First South Yorks","Doncaster","Eminox","Y","4",null,""],["BG12YJT","36261","First South Yorks","Doncaster","Eminox","Y","3",null,""],["BG12YJU","36262","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BG12YJV","36263","First South Yorks","Doncaster","Eminox","Y","3",null,""],["BG12YJW","36264","First South Yorks","Doncaster","Eminox","Y","3",null,""],["BG12YKF","36273","First South Yorks","Doncaster","Eminox","Y","4",null,""],
+["BG13VUD","69560","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["BJ10VGA","69500","First West Yorkshire","Bradford","HJS","Y","4",null,""],["BJ10VGC","69502","First South Yorks","Olive Grove","HJS","Y","3",null,""],["BJ10VGD","69501","First West Yorkshire","Bradford","HJS","Y","4",null,""],["BJ10VGE","69503","First South Yorks","Olive Grove","HJS","Y","4",null,""],["BJ10VGF","69504","First South Yorks","Olive Grove","HJS","Y","4",null,""],
+["BJ10VGG","69505","First West Yorkshire","Bradford","HJS","Y","3",null,""],["BJ11DVV","36136","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BJ11DVW","36137","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BJ11EBG","36145","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BJ11EBU","69510","First South Yorks","Olive Grove","HJS","Y","4",null,""],["BJ11EBV","69507","First South Yorks","Olive Grove","HJS","Y","4",null,""],
+["BJ11EBX","69508","First South Yorks","Olive Grove","HJS","Y","3",null,""],["BJ11EBZ","69511","First South Yorks","Olive Grove","HJS","Y","4",null,""],["BJ11ECA","69512","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BJ11ECC","69513","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BJ11ECF","69514","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["BJ11ECY","37986","First Essex","Hadleigh","HJS","N","0",46101,""],
+["BJ11XGY","37985","First Essex","Colchester","HJS","N","0",45668,""],["BJ11XHY","69506","First South Yorks","Olive Grove","HJS","Y","4",null,""],["BJ11XHZ","69509","First South Yorks","Olive Grove","HJS","Y","4",null,""],["BJ12VNR","36246","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BJ12VNS","36247","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BJ12VWY","36216","First Essex","Hadleigh","HJS","N","0",45990,""],
+["BJ12VXA","36217","First Essex","Hadleigh","HJS","N","0",45668,""],["BJ12VXB","36218","First Essex","Hadleigh","HJS","N","0",46101,""],["BJ12VXC","36219","First Essex","Hadleigh","HJS","N","0",46031,""],["BJ12VXD","36220","First Essex","Hadleigh","HJS","N","0",45668,""],["BN12WOD","36203","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BN12WOH","36204","First South Yorks","Olive Grove","Eminox","N","0",46143,""],
+["BN12WPE","36243","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BN12WPF","36244","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["BN12WPJ","36245","First South Yorks","Olive Grove","Eminox","N","0",46158,""],["BT13YVV","69579","First West Yorkshire","Halifax","HJS","Y","4",null,""],["BT13YVW","69580","First West Yorkshire","Halifax","HJS","Y","4",null,""],["BT13YVX","69581","First West Yorkshire","Halifax","HJS","Y","4",null,""],
+["BT13YVY","69582","First West Yorkshire","Halifax","HJS","Y","2",46199,""],["BT13YVZ","69583","First West Yorkshire","Halifax","HJS","Y","4",null,""],["BT13YWA","69584","First West Yorkshire","Halifax","HJS","Y","4",null,""],["BT13YWB","69585","First West Yorkshire","Halifax","HJS","Y","3",null,""],["BT13YWC","69586","First West Yorkshire","Halifax","HJS","Y","4",null,""],["BT13YWD","69587","First West Yorkshire","Halifax","HJS","Y","4",null,""],
+["BV13YZZ","69559","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["BV13ZDH","69556","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["BV13ZDJ","69557","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["BV13ZDK","69558","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["CRZ166","","First Eastern Counties","Great Yarmouth","Eminox","Y","1",46213,"Stopped Reporting since last report"],["CRZ266","","First Eastern Counties","Great Yarmouth","Eminox","N","0",45668,""],
+["CRZ366","37066","First Eastern Counties","Great Yarmouth","Eminox","N","0",45668,""],["CRZ488","37067","First Eastern Counties","Great Yarmouth","Eminox","Y","2",46186,""],["CU08AHP","69303","First Greater Manchester","Rochdale","HJS","N","0",45863,""],["CU08AHX","69305","First Greater Manchester","Rochdale","HJS","N","0",45668,""],["DC06FNG","66992","First West of England","Hengrove","HJS","Y","4",null,""],["DC06FNH","","First West of England","Lawrence Hill Training","HJS","N","0",45668,""],
+["HX08DHF","37581","First South Yorks","Olive Grove Training","Eminox","Y","4",null,""],["HX08DHJ","37586","First Hants, Dorset & Berkshire","Weymouth","Eminox","Y","2",46199,""],["HX08DHK","37582","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",46143,""],["HX08DHL","37580","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["HX08DHY","37585","First Hants, Dorset & Berkshire","Weymouth","Eminox","Y","3",null,""],["HY09AJX","69380","First Midlands","Leicester","HJS","Y","4",null,""],
+["HY09AKG","69381","First Midlands","Leicester","HJS","Y","4",null,""],["HY09AOR","69392","First Hants, Dorset & Berkshire","Slough","HJS","N","0",46171,"Removed from CVRAS Approval since last report"],["HY09AOS","69390","First Hants, Dorset & Berkshire","Slough","HJS","Y","4",null,""],["HY09AOT","69388","First South Yorks","Doncaster","HJS","Y","3",null,""],["HY09AUV","69391","First South Yorks","Doncaster","HJS","Y","4",null,""],["HY09AZA","69383","First Midlands","Adderley Green","HJS","N","0",46143,""],
+["KX05AOD","66973","First West Yorkshire","Bradford","Eminox","N","0",46171,"Removed from CVRAS Approval since last report"],["KX05MGY","66975","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["LJ07XEN","36351","First West of England","Keynsham","Eminox","Y","3",null,""],["LJ07XEU","36353","First West of England","Keynsham","Eminox","Y","3",null,""],["LJ07XEW","36354","First West of England","Keynsham","Eminox","Y","4",null,""],["LK59CWN","37773","First West Yorkshire","Huddersfield","HJS","N","0",45668,""],
+["LK59CWP","37775","First West Yorkshire","Huddersfield","HJS","Y","3",null,""],["LK59CWU","37778","First West Yorkshire","Huddersfield","HJS","N","0",45668,""],["LK59CWV","37779","First West Yorkshire","Huddersfield","HJS","N","0",45975,""],["LK59CWX","37781","First West Yorkshire","Huddersfield","HJS","N","0",45668,""],["LK59CXA","","First West Yorkshire","Huddersfield","HJS","N","0",45668,""],["LK59CXC","37784","First West Yorkshire","Huddersfield","HJS","N","0",45998,""],
+["LK59CXG","37790","First West Yorkshire","Huddersfield","Eminox","Y","4",null,""],["LK59CXH","37791","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45998,""],["LK59CXJ","37792","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45998,""],["LK59CXL","37793","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45998,""],["LK59CXN","37795","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45998,""],["LK59CXO","","First Eastern Counties","Great Yarmouth","Eminox","N","0",45668,""],
+["LK59FCP","","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],["LK59FCU","37800","First West Yorkshire","Huddersfield","Eminox","Y","3",null,""],["LK59FCV","37801","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45990,""],["LK59FCX","LK59FCX","First West Yorkshire","Hunslet","Eminox","N","0",46143,""],["LK59FCY","LK59FCY","First West Yorkshire","Hunslet","Eminox","N","0",45737,""],["LK62FUJ","63039","First South Yorks","Doncaster","Eminox","Y","4",null,""],
+["LK62HJD","63038","First South Yorks","Doncaster","Eminox","Y","4",null,""],["LK62HKG","63040","First South Yorks","Doncaster","Eminox","Y","4",null,""],["LRZ5568","","York Pullman","","Eminox","N","0",45668,"Removed from CVRAS Approval since last report"],["LX59DAA","","First Eastern Counties","Great Yarmouth","Proventia","N","0",45695,""],["LX59DAO","","First Eastern Counties","Great Yarmouth","Proventia","N","0",45835,""],["LX59DAU","36283","First Eastern Counties","Great Yarmouth","Proventia","N","0",45668,""],
+["LX59DBO","36284","First Eastern Counties","Great Yarmouth","Proventia","N","0",45709,""],["LX59DBU","","First Eastern Counties","Great Yarmouth","Proventia","N","0",45709,""],["LX59DBV","","First Eastern Counties","Great Yarmouth","Proventia","N","0",45668,""],["LX59DBY","","First Eastern Counties","Great Yarmouth","Proventia","N","0",45835,""],["LX59DBZ","","First Eastern Counties","Great Yarmouth","Proventia","N","0",45835,""],["LX60DXB","36100","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45998,""],
+["MX07BTO","37291","First West Yorkshire","Huddersfield","Eminox","N","0",45709,""],["MX07BTU","37292","First West Yorkshire","Hunslet","Eminox","N","0",45919,""],["MX07BTV","37293","First West Yorkshire","Hunslet","Eminox","Y","2",46199,""],["MX07BTY","37294","First West Yorkshire","Hunslet","Eminox","N","0",46031,""],["MX07BTZ","37295","First West Yorkshire","Huddersfield","Eminox","Y","3",null,""],["MX07BUA","37296","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],
+["MX09GYB","37552","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["MX09GYF","37553","First South Yorks","Doncaster","Eminox","Y","2",46213,"Stopped Reporting since last report"],["MX09HUK","37551","First South Yorks","Doncaster","Eminox","Y","3",null,""],["MX09HUO","37557","First South Yorks","Doncaster","Eminox","Y","4",null,""],["MX09HUP","37559","First South Yorks","Doncaster","Eminox","Y","4",null,""],["MX09HUU","37558","First South Yorks","Doncaster","Eminox","Y","3",null,""],
+["MX09LMF","37560","First South Yorks","Doncaster","Eminox","Y","4",null,""],["MX09LMJ","37561","First South Yorks","Doncaster","Eminox","Y","4",null,""],["MX09LMK","37555","First South Yorks","Doncaster","Eminox","Y","4",null,""],["MX09LML","37556","First South Yorks","Doncaster","Eminox","Y","3",null,""],["MX55FFM","66901","First Hants, Dorset & Berkshire","Hoeford","Eminox","N","0",null,"Started working & will be added back onto CVRAS approval at next upload"],["MX55FFP","66903","First Hants, Dorset & Berkshire","Hoeford","Eminox","N","0",45668,""],
+["MX55HHR","66882","First South West","Camborne","Eminox","N","0",45668,""],["MX58DWO","37383","First West of England","Lawrence Hill","Eminox","Y","4",null,""],["MX58DWP","37384","First South Yorks","Doncaster","Eminox","Y","3",null,""],["MX58DWW","37387","First Greater Manchester","Rochdale","Eminox","N","0",46143,""],["MX58DYM","37418","First Greater Manchester","Rochdale","Eminox","Y","3",null,""],["MX58DYN","37419","First Greater Manchester","Rochdale","Eminox","Y","4",null,""],
+["MX58DYV","37425","First West of England","Bath and Wells","Eminox","Y","4",null,""],["MX58DYW","37426","First West of England","Bath and Wells","Eminox","Y","4",null,""],["MX58DYY","","First West Yorkshire","Hunslet","Eminox","N","0",45681,""],["MX58DZA","37428","First West Yorkshire","Hunslet","Eminox","N","0",46046,""],["MX58DZB","37429","First West Yorkshire","Hunslet","Eminox","Y","3",null,""],["MX58DZC","37430","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["MX58DZD","37431","First West Yorkshire","Hunslet","Eminox","N","0",45737,""],["MX58DZE","37432","First West Yorkshire","Hunslet","Eminox","N","0",45934,""],["MX58DZG","37434","First West Yorkshire","Hunslet","Eminox","N","0",45849,""],["MX58DZH","37435","First West Yorkshire","Hunslet","Eminox","Y","4",null,""],["MX58DZS","37443","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["MX58DZT","37444","First West Yorkshire","Hunslet","Eminox","N","0",45737,""],
+["MX58DZU","37445","First West Yorkshire","Hunslet","Eminox","N","0",46059,""],["MX58DZV","37446","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["MX58DZY","37448","First South Yorks","Olive Grove","Eminox","Y","2",46199,""],["MX58DZZ","37449","First West Yorkshire","Hunslet","Eminox","N","0",45975,""],["MX58EAA","37450","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["MX58EAC","37451","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],
+["MX58EAG","37453","First West Yorkshire","Hunslet","Eminox","N","0",45933,""],["MX58EAJ","37454","First South Yorks","Olive Grove","Eminox","Y","2",46199,""],["MX58EAK","37455","First West Yorkshire","Hunslet","Eminox","N","0",45933,""],["MX58EAM","37456","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["MX58EBN","37468","First Greater Manchester","Rochdale","Eminox","Y","4",null,""],["MXZ3342","37532","First Eastern Counties","Lowestoft","Eminox","N","0",45668,""],
+["MXZ3343","37535","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["MXZ3348","37541","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["MXZ3349","37542","First South Yorks","Olive Grove","Eminox","Y","2",46213,"Stopped Reporting since last report"],["MXZ3351","37543","First South Yorks","Olive Grove","Eminox","Y","2",46213,"Stopped Reporting since last report"],["MXZ3374","37544","First South Yorks","Olive Grove","Eminox","N","0",46143,""],["P6SHB","","York Pullman","York, Rufforth","Eminox","N","0",45668,""],
+["PN10FNR","36361","First West of England","Keynsham","HJS","Y","4",null,""],["PN10FNS","36362","First West of England","Keynsham","HJS","Y","2",46213,"Stopped Reporting since last report"],["S33PBS","","York Pullman","","Eminox","N","0",45668,"Removed from CVRAS Approval since last report"],["SF09LDD","37736","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",45998,""],["SF09LDE","37737","First Hants, Dorset & Berkshire","Weymouth","Eminox","Y","4",null,""],["SF09LDZ","37747","York Pullman","York, Rufforth","Eminox","Y","4",null,""],
+["SK14CTV","33831","First Midlands","Worcester","HJS","Y","4",null,""],["SK14CTX","33832","First West of England","Bath and Wells","HJS","Y","4",null,""],["SK14CTY","33833","First West of England","Bath and Wells","HJS","Y","4",null,""],["SK63KFY","63111","First Midlands","Adderley Green","HJS","Y","4",null,""],["SK63KFZ","63112","First Midlands","Adderley Green","HJS","Y","4",null,""],["SK63KGA","63113","First Midlands","Adderley Green","HJS","Y","4",null,""],
+["SK63KGE","63114","First Midlands","Adderley Green","HJS","N","0",46059,""],["SK63KGF","63115","First Midlands","Adderley Green","HJS","Y","4",null,""],["SK63KGG","63116","First Midlands","Adderley Green","HJS","Y","4",null,""],["SK63KGJ","63117","First Midlands","Adderley Green","HJS","Y","4",null,""],["SK63KGN","63118","First Midlands","Adderley Green","HJS","Y","4",null,""],["SK63KHT","","First South West","Taunton","HJS","N","0",45877,""],
+["SK63KHU","","First South West","Taunton","HJS","N","0",45877,""],["SK63KHV","","First South West","Taunton","HJS","N","0",45668,""],["SK63KHW","","First South West","Taunton","HJS","N","0",45668,""],["SK63KHX","63046","First South West","Taunton","HJS","N","0",45668,""],["SK63KHY","63047","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",46087,""],["SK63KHZ","63048","First South Yorks","Olive Grove","HJS","Y","4",null,""],
+["SK63KJA","63049","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SK63KJE","63050","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SK63KJF","63051","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SK63KJJ","63052","First South Yorks","Olive Grove","HJS","Y","2",46199,""],["SK63KJN","63053","First Hants, Dorset & Berkshire","Weymouth","HJS","Y","4",null,""],["SK63KJO","63054","First South Yorks","Olive Grove","HJS","Y","4",null,""],
+["SK63KJU","63055","First South Yorks","Olive Grove","HJS","Y","2",46213,"Stopped Reporting since last report"],["SK63KJV","63056","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SK63KJX","63057","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SK63KJY","63058","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SK63KJZ","63059","First South Yorks","Olive Grove","HJS","Y","3",null,""],["SK63KKA","63060","First South Yorks","Olive Grove","HJS","Y","4",null,""],
+["SK63KKB","63061","First Essex","Hadleigh","HJS","N","0",45668,""],["SK63KKC","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SK63KKD","63063","First Essex","Hadleigh","HJS","N","0",45961,""],["SK63KKE","63064","First Essex","Hadleigh","HJS","N","0",46101,""],["SK63KKF","63065","First Essex","Hadleigh","HJS","N","0",45934,""],["SK63KKG","63066","First South Yorks","Olive Grove","HJS","Y","4",null,""],
+["SK63KKH","63067","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",46087,""],["SK63KLE","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SK63KLF","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SK63KLJ","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SK63KLS","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SK63KME","47418","First Greater Manchester","Rochdale","HJS","Y","4",null,""],
+["SK63KMF","","First South West","Taunton","HJS","N","0",45877,""],["SK63KMG","47420","First South West","Taunton","HJS","N","0",46073,""],["SK63KMJ","47421","First Essex","Colchester","HJS","N","0",45668,""],["SK63KMM","47422","First Hants, Dorset & Berkshire","Slough","HJS","Y","3",null,""],["SK63KMO","47423","First Hants, Dorset & Berkshire","Hoeford","HJS","Y","4",null,""],["SK63KMU","47424","First Hants, Dorset & Berkshire","Hoeford","HJS","Y","4",null,""],
+["SK63KMX","47426","First Hants, Dorset & Berkshire","Slough","HJS","Y","4",null,""],["SK63KMY","47427","First Essex","Colchester","HJS","N","0",45668,""],["SK63KNB","47430","First Essex","Colchester","HJS","N","0",45793,""],["SK63KND","47432","First Greater Manchester","Rochdale","HJS","Y","4",null,""],["SK63KNE","47433","First Greater Manchester","Rochdale","HJS","Y","4",null,""],["SK63KNF","47434","First South West","Taunton","HJS","N","0",46073,""],
+["SL14DBO","33888","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["SL14DBU","33889","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SL14DBV","33890","First Greater Manchester","Rochdale","Eminox","Y","3",null,""],["SL14DFD","33858","First Midlands","Worcester","Eminox","N","0",46143,""],["SL14DFE","33859","First Midlands","Worcester","Eminox","N","0",45668,""],["SL14DFF","33860","First Midlands","Worcester","Eminox","N","0",46129,""],
+["SL14DFG","33861","First Midlands","Worcester","Eminox","N","0",46129,""],["SL14DFK","33862","First Midlands","Worcester","Eminox","N","0",46143,""],["SL14LMF","33863","First Midlands","Worcester","Eminox","N","0",46143,""],["SL14LMJ","33864","First Midlands","Worcester","Eminox","N","0",46143,""],["SL14LMM","33866","First Midlands","Worcester","Eminox","N","0",45891,""],["SL14LMO","33867","First Midlands","Worcester","Eminox","N","0",46073,""],
+["SL14LMU","33868","First Midlands","Worcester","Eminox","N","0",46143,""],["SL14LMV","","First Midlands","Worcester","Eminox","N","0",45668,""],["SL14LMY","33870","First Midlands","Worcester","Eminox","N","0",45934,""],["SL14LNA","33871","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SL14LNC","33872","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SM13NBN","63096","First West Yorkshire","Halifax","HJS","Y","4",null,""],
+["SM13NBO","63097","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SM13NBX","63098","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SM13NBZ","63100","First Midlands","Adderley Green","HJS","Y","4",null,""],["SM13NCA","63101","First Midlands","Adderley Green","HJS","Y","4",null,""],["SM13NCC","63102","First Midlands","Adderley Green","HJS","Y","4",null,""],["SM13NCD","63103","First Midlands","Adderley Green","HJS","Y","4",null,""],
+["SM13NCN","63107","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SM13NCO","63108","First West Yorkshire","Halifax","HJS","Y","3",null,""],["SN12ADU","33656","First Essex","Colchester","Eminox","N","0",46143,""],["SN12ADV","33657","First Essex","Chelmsford","Eminox","N","0",46045,""],["SN12ADX","33658","First West of England","Bath and Wells","HJS","N","0",46143,""],["SN12ADZ","33659","First West of England","Bath and Wells","HJS","Y","4",null,""],
+["SN12AEA","33660","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AEB","33661","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AED","33662","First West of England","Bath and Wells","HJS","N","0",46115,""],["SN12AEE","33663","First Essex","Colchester","Eminox","N","0",45668,""],["SN12AEF","33664","First West of England","Bath and Wells","HJS","Y","2",46186,""],["SN12AEG","33665","First West of England","Bath and Wells","HJS","Y","4",null,""],
+["SN12AEJ","33666","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AEK","33667","First West of England","Bath and Wells","HJS","Y","2",46199,""],["SN12AEL","33668","First Essex","Colchester","Eminox","Y","2",46185,""],["SN12AEM","33669","First Essex","Colchester","Eminox","N","0",45835,""],["SN12AEO","33670","First Essex","Colchester","Eminox","N","0",45668,""],["SN12AEP","","First Essex","Colchester","Eminox","N","0",45668,""],
+["SN12AET","33672","First Essex","Colchester","Eminox","N","0",45998,""],["SN12AEU","33673","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AEV","33674","First Essex","Colchester","Eminox","N","0",46115,""],["SN12AEW","33675","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AEX","33676","First Essex","Colchester","Eminox","N","0",45668,""],["SN12AEY","33677","First West of England","Bath and Wells","HJS","Y","4",null,""],
+["SN12AEZ","33678","First Essex","Colchester","Eminox","Y","2",46199,""],["SN12AFA","33679","First West Yorkshire","Halifax","Eminox","Y","2",46199,""],["SN12AFE","33680","First Essex","Colchester","Eminox","N","0",46101,""],["SN12AFF","33681","First Essex","Colchester","Eminox","N","0",45668,""],["SN12AFJ","33682","First Essex","Colchester","Eminox","N","0",45668,""],["SN12AFK","33683","First West Yorkshire","Halifax","Eminox","Y","4",null,""],
+["SN12AFO","33684","First Essex","Colchester","Eminox","N","0",46003,""],["SN12AFU","33685","First Essex","Hadleigh","HJS","N","0",45668,""],["SN12AFV","33686","First Essex","Colchester","Eminox","N","0",45681,""],["SN12AFX","33687","First Essex","Colchester","Eminox","N","0",46115,""],["SN12AFY","33688","First Essex","Colchester","Eminox","N","0",45905,""],["SN12AFZ","33689","First Essex","Colchester","Eminox","N","0",45709,""],
+["SN12AGO","33690","First Essex","Colchester","Eminox","Y","2",46199,""],["SN12AGU","33691","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AGV","33692","First Essex","Colchester","Eminox","N","0",45668,""],["SN12AGX","","First Essex","Colchester","HJS","N","0",45905,""],["SN12AGY","33694","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AGZ","33695","First Essex","Colchester","HJS","N","0",46031,""],
+["SN12AHA","33696","First Essex","Basildon","HJS","N","0",46115,""],["SN12AHC","33697","First Essex","Colchester","HJS","N","0",45668,""],["SN12AHD","33698","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AHE","33699","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",46129,""],["SN12AHF","33700","First Essex","Colchester","HJS","N","0",46115,""],["SN12AHG","33701","First West Yorkshire","Halifax","Eminox","Y","2",46199,""],
+["SN12AHJ","33702","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AHK","33703","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AHL","33704","First Hants, Dorset & Berkshire","Weymouth","Eminox","Y","4",null,""],["SN12AHP","33706","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AHV","33708","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AHY","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],
+["SN12AHZ","33711","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AJO","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45905,""],["SN12AJU","33713","First Essex","Colchester","Eminox","N","0",45975,""],["SN12AJX","33715","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AJY","33716","First West of England","Bath and Wells","HJS","N","0",46073,""],["SN12AKG","33718","First Essex","Colchester","HJS","N","0",45668,""],
+["SN12AKJ","33719","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AKK","33720","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",46087,""],["SN12AKO","33721","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AKP","33722","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AKU","33723","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AKX","33725","First Essex","Colchester","HJS","N","0",45668,""],
+["SN12ALO","33728","First Essex","Colchester","HJS","N","0",45668,""],["SN12ALU","33729","First West Yorkshire","Halifax","Eminox","Y","2",46199,""],["SN12AMK","33730","First Essex","Chelmsford","Eminox","Y","4",null,""],["SN12AMO","33731","First West of England","Bath and Wells","HJS","Y","2",46213,"Stopped Reporting since last report"],["SN12AMU","33732","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AMV","33733","First Essex","Colchester","HJS","N","0",45891,""],
+["SN12AMX","33734","First Hants, Dorset & Berkshire","Weymouth","Eminox","Y","4",null,""],["SN12ANF","33736","First Hants, Dorset & Berkshire","Weymouth","Eminox","N","0",46171,"Removed from CVRAS Approval since last report"],["SN12ANP","33736-FL","First West Yorkshire","Halifax","Eminox","Y","2",46199,""],["SN12ANR","33737","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12ANU","33738","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12ANV","33739","First West Yorkshire","Halifax","Eminox","Y","4",null,""],
+["SN12AOA","33741","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AOC","33743","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AOD","33744","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AOE","33745","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN12AOF","33746","First Midlands","Worcester","Eminox","Y","2",46199,""],["SN12AOG","33747","First Midlands","Worcester","Eminox","N","0",46143,""],
+["SN12AOH","33748","First Midlands","Worcester","Eminox","N","0",46143,""],["SN12AOJ","33749","First Midlands","Worcester","Eminox","N","0",45990,""],["SN12AOK","33750","First Essex","Hadleigh","HJS","N","0",46059,""],["SN12AOL","","First Midlands","Worcester","Eminox","N","0",45668,""],["SN12AOM","33752","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN12AOO","33753","First West of England","Bath and Wells","HJS","Y","4",null,""],
+["SN12AOP","33754","First West of England","Bath and Wells","HJS","N","0",46129,""],["SN13CPE","67805","First Essex","Chelmsford","HJS","N","0",45668,""],["SN14DVM","63119","First South Yorks","Doncaster","Eminox","Y","4",null,""],["SN14DVO","63120","First South Yorks","Doncaster","Eminox","Y","4",null,""],["SN14DVP","63121","First South Yorks","Doncaster","Eminox","Y","4",null,""],["SN14DVR","63122","First South Yorks","Doncaster","Eminox","Y","4",null,""],
+["SN14DVT","63123","First South Yorks","Doncaster","Eminox","Y","4",null,""],["SN14DXE","63186","First Hants, Dorset & Berkshire","Hoeford","HJS","Y","4",null,""],["SN14DXK","63146","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN14EBC","63190","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SN14EBC","63192","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SN14EBD","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],
+["SN14EBF","","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["SN14EBG","47573","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBJ","47574","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBK","47575","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBL","47576","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBM","47577","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],
+["SN14EBO","47578","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","3",null,""],["SN14EBP","47579","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBU","47580","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBV","47581","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBX","47582","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14EBZ","47583","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],
+["SN14ECA","47584","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14ECC","47585","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14ECD","47586","First Hants, Dorset & Berkshire","Hilsea","HJS","Y","4",null,""],["SN14ECE","47587","First Hants, Dorset & Berkshire","Slough","HJS","Y","3",null,""],["SN14ECF","47588","First Hants, Dorset & Berkshire","Slough","HJS","Y","4",null,""],["SN14ECJ","47589","First Hants, Dorset & Berkshire","Hoeford","HJS","Y","4",null,""],
+["SN14ECT","47590","First South West","Taunton","HJS","Y","4",null,""],["SN14ECV","47591","First South West","Taunton","HJS","Y","4",null,""],["SN14ECW","47592","First Hants, Dorset & Berkshire","Slough","HJS","Y","4",null,""],["SN14ECX","47593","First Hants, Dorset & Berkshire","Hoeford","HJS","Y","4",null,""],["SN14ECY","47594","First Hants, Dorset & Berkshire","Hoeford","HJS","Y","4",null,""],["SN14ECZ","63193","First West Yorkshire","Halifax","Eminox","Y","4",null,""],
+["SN14EDC","63194","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14EDJ","63196","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14FDV","63203","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14FDX","63204","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["SN14FDY","63205","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14FEU","47595","First West of England","Lawrence Hill","HJS","N","0",45668,""],
+["SN14FEV","47596","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SN14FEX","47597","First Essex","Chelmsford","HJS","N","0",45668,""],["SN14FFA","47598","First Essex","Chelmsford","HJS","N","0",45765,""],["SN14FFC","","First Essex","Chelmsford","HJS","N","0",45668,""],["SN14FFD","47600","First Essex","Chelmsford","HJS","N","0",45961,""],["SN14FFE","","First Essex","Chelmsford","HJS","N","0",45668,""],
+["SN14FFG","47602","First Essex","Chelmsford","HJS","N","0",45668,""],["SN14FFJ","47604","First Essex","Chelmsford","HJS","N","0",45668,""],["SN14FFK","","First Essex","Chelmsford","HJS","N","0",45779,""],["SN14FFL","47606","First Essex","Chelmsford","HJS","N","0",45933,""],["SN14FFM","47607","First Essex","Chelmsford","HJS","N","0",45668,""],["SN14FFO","47608","First Essex","Chelmsford","HJS","N","0",45681,""],
+["SN14FFV","47545","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN14FGC","47551","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14FGD","47552","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN14FGE","47553","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14FGF","47554","First West of England","Lawrence Hill","HJS","Y","4",null,""],["SN14FGG","47555","First West of England","Lawrence Hill","HJS","N","0",46143,""],
+["SN14FGJ","47556","First West of England","Lawrence Hill","HJS","Y","4",null,""],["SN14FGK","47557","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN14FGM","47558","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TPZ","33895","First South West","Taunton","HJS","N","0",45793,""],["SN14TRV","33896","First South West","Taunton","HJS","N","0",46073,""],["SN14TRX","33897","First South West","Taunton","HJS","N","0",46073,""],
+["SN14TRZ","33834","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TSO","33835","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TSU","33836","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TSV","33837","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TSX","33838","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TSY","33839","First West of England","Bath and Wells","HJS","Y","4",null,""],
+["SN14TSZ","33840","First West of England","Bath and Wells","HJS","N","0",46158,""],["SN14TTF","33842","First Greater Manchester","Rochdale","Eminox","Y","2",46199,""],["SN14TTJ","33843","First Greater Manchester","Rochdale","Eminox","Y","2",46199,""],["SN14TTO","33845","First Greater Manchester","Rochdale","Eminox","Y","2",46199,""],["SN14TTY","33849","First Greater Manchester","Rochdale","Eminox","Y","2",46199,""],["SN14TUH","33852","First Greater Manchester","Rochdale","Eminox","Y","2",46186,""],
+["SN14TUO","33854","First Greater Manchester","Rochdale","Eminox","Y","2",46199,""],["SN14TUV","33856","First Greater Manchester","Rochdale","Eminox","N","0",45668,""],["SN14TUW","33857","First West of England","Bath and Wells","HJS","Y","4",null,""],["SN14TUY","33873","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVA","33874","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["SN14TVC","33875","First West Yorkshire","Halifax","Eminox","Y","3",null,""],
+["SN14TVD","33876","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVE","33877","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["SN14TVF","33878","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVJ","33879","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVK","33880","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVL","33881","First West Yorkshire","Halifax","Eminox","Y","4",null,""],
+["SN14TVM","33882","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVO","33883","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVP","33884","First West Yorkshire","Halifax","Eminox","N","0",46143,""],["SN14TVT","33885","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVU","33886","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["SN14TVV","33887","First West Yorkshire","Halifax","Eminox","Y","4",null,""],
+["SN15ADU","","First Essex","Chelmsford","HJS","N","0",45668,""],["SN15ADV","47631","First West of England","Lawrence Hill","HJS","Y","4",null,""],["SN15ADX","47632","First Greater Manchester","Rochdale","HJS","Y","2",46199,""],["SN15ADZ","47633","First Essex","Chelmsford","HJS","N","0",46101,""],["SN15AEF","47639","First West of England","Bath and Wells","HJS","N","0",46171,"Removed from CVRAS Approval since last report"],["SN15AEG","47640","First West of England","Bath and Wells","HJS","Y","3",null,""],
+["SN15AEJ","47641","First West of England","Lawrence Hill","HJS","Y","3",null,""],["SN57HCX","37138","First Essex","Colchester","HJS","N","0",46046,""],["SN57HDH","37133","First Essex","Colchester","HJS","N","0",45975,""],["SN59AVU","","First South West","Taunton","HJS","N","0",45668,""],["SN59AVW","","First South West","Taunton","HJS","N","0",45668,""],["SN59AVX","","First South West","Taunton","HJS","N","0",45668,""],
+["SN59AWO","","First South West","Taunton","HJS","N","0",45668,""],["SN59AWV","33425","First Essex","Hadleigh","Eminox","N","0",45863,""],["SN62AHL","67735","First Essex","Chelmsford","HJS","N","0",46129,""],["SN62AHV","67736","First Essex","Chelmsford","HJS","N","0",45668,""],["SN62AHX","67737","First Essex","Chelmsford","HJS","N","0",46129,""],["SN62AJU","67738","First Essex","Chelmsford","HJS","N","0",46017,""],
+["SN62AJV","67739","First Essex","Chelmsford","HJS","N","0",45668,""],["SN62AKJ","67741","First Essex","Chelmsford","HJS","N","0",45668,""],["SN62AOG","67750","First Essex","Chelmsford","HJS","N","0",46129,""],["SN62ASO","67755","First Essex","Chelmsford","HJS","N","0",46171,"Removed from CVRAS Approval since last report"],["SN62ASU","67756","First Essex","Chelmsford","HJS","N","0",45668,""],["SN62AXZ","67779","First Essex","Chelmsford","HJS","N","0",45668,""],
+["SN63MYH","33825","First Essex","Colchester","HJS","N","0",45668,""],["SN63MYJ","33826","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SN63MYK","33827","First West Yorkshire","Halifax","HJS","Y","3",null,""],["SN63MYL","33828","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SN63MYM","33829","First West Yorkshire","Halifax","HJS","Y","4",null,""],["SN63MYO","33830","First West Yorkshire","Halifax","HJS","Y","4",null,""],
+["SN64CFY","47519","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CFZ","47520","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGE","63171","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGF","63172","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGG","63173","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGK","63174","First Midlands","Adderley Green","HJS","Y","4",null,""],
+["SN64CGO","63175","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGU","63176","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGV","63177","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGX","63178","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CGY","63179","First Midlands","Adderley Green","HJS","Y","4",null,""],["SN64CLF","47559","First West of England","Weston-super-Mare","HJS","Y","4",null,""],
+["SN64CLO","47561","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN64CLY","47565","First West of England","Lawrence Hill","HJS","Y","2",46185,""],["SN64CLZ","47566","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN64CME","47567","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN64CMF","47568","First West of England","Lawrence Hill","HJS","Y","4",null,""],["SN64CMK","47569","First West of England","Weston-super-Mare","HJS","Y","4",null,""],
+["SN64CMO","47570","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["SN64CMU","47571","First West of England","Lawrence Hill","HJS","N","0",46059,""],["SV08FXP","","First West Yorkshire","Hunslet","HJS","N","0",45891,""],["SV08FXU","37637","First West of England","Lawrence Hill","HJS","Y","2",46185,""],["SV08FXY","37640","First South Yorks","Olive Grove","HJS","Y","4",null,""],["SV08FXZ","37641","First West of England","Bath and Wells","HJS","Y","3",null,""],
+["SV08FYA","37642","First West of England","Lawrence Hill","HJS","Y","2",46192,""],["VT59JPT","33424","First Essex","Chelmsford","Eminox","N","0",46017,""],["WO14OFV","36364","First West of England","Keynsham","HJS","Y","4",null,""],["WO14OGE","36363","First West of England","Keynsham","HJS","Y","4",null,""],["WX09KBK","37757","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX09KBN","37758","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX09KBO","37759","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX09KBP","37760","First West of England","Lawrence Hill","HJS","Y","2",46185,""],["WX09KBU","37761","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX09KBV","37762","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX09KBY","37763","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX09KBZ","37764","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX09KCA","37765","First West of England","Lawrence Hill","HJS","Y","2",46192,""],["WX09KCC","37766","First West of England","Lawrence Hill","HJS","N","0",46115,""],["WX09KCE","37767","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX09KCF","37768","First West of England","Lawrence Hill","HJS","Y","2",46199,""],["WX09KCG","37769","First West of England","Lawrence Hill","HJS","N","0",46115,""],["WX09KCJ","37770","First West of England","Lawrence Hill","HJS","N","0",46157,""],
+["WX09KCK","37771","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX09KCN","37772","First West of England","Lawrence Hill","HJS","N","0",46087,""],["WX55TZD","66942","First West of England","Hengrove","HJS","Y","4",null,""],["WX55TZT","66956","First Hants, Dorset & Berkshire","Hoeford Training","Eminox","N","0",45668,""],["WX55UAA","66934","First West of England","Hengrove Training","HJS","Y","2",46199,""],["WX55UAC","66936","First West of England","Hengrove","HJS","Y","2",46213,"Stopped Reporting since last report"],
+["WX55UAD","66937","First West of England","Lawrence Hill","HJS","Y","2",46213,"Stopped Reporting since last report"],["WX57HJO","37315","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HJU","37316","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HJV","37317","First West of England","Lawrence Hill","HJS","Y","2",46213,"Stopped Reporting since last report"],["WX57HJY","37318","First West of England","Hengrove","HJS","Y","3",null,""],["WX57HKA","37320","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX57HKC","37322","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX57HKD","37323","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX57HKE","37324","First West of England","Lawrence Hill","HJS","Y","2",46213,"Stopped Reporting since last report"],["WX57HKG","37326","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX57HKJ","37328","First West of England","Bath and Wells","HJS","Y","3",null,""],["WX57HKL","37330","First West of England","Lawrence Hill","HJS","N","0",46129,""],
+["WX57HKM","37331","First West of England","Lawrence Hill","HJS","N","0",46101,""],["WX57HKN","37332","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HKO","37333","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HKP","","First South West","Bath and Wells","HJS","N","0",45668,""],["WX57HKT","37335","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HKU","37336","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX57HKY","37339","First West of England","Bath and Wells","HJS","N","0",45668,""],["WX57HKZ","37340","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX57HLC","37342","First West of England","Lawrence Hill","HJS","N","0",46157,""],["WX57HLF","37345","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HLH","37347","First West of England","Lawrence Hill","HJS","Y","2",46185,""],["WX57HLK","37349","First West of England","Lawrence Hill","HJS","N","0",46045,""],
+["WX57HLM","37350","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX57HLN","37351","First South Yorks","Doncaster","Eminox","Y","3",null,""],["WX57HLP","37353","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HLR","37354","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX57HLU","37355","First West of England","Lawrence Hill","HJS","N","0",46087,""],["WX57HLV","37356","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX57HLW","37357","First West of England","Lawrence Hill","HJS","Y","2",46199,""],["WX57HLY","37358","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX57HLZ","37359","First West of England","Bath and Wells","Eminox","N","0",46143,""],["WX58JWU","37587","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX58JWV","37588","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX58JWW","37589","First West of England","Lawrence Hill","HJS","Y","4",null,""],
+["WX58JWY","37590","First South Yorks","Olive Grove","HJS","Y","3",null,""],["WX58JWZ","37591","First South Yorks","Olive Grove","HJS","Y","3",null,""],["WX58JXA","37592","First West of England","Lawrence Hill","HJS","Y","2",46199,""],["WX58JXC","37594","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX58JXD","37595","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX58JXF","37597","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX58JXG","37598","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX58JXH","37599","First West of England","Lawrence Hill","HJS","Y","2",46213,"Stopped Reporting since last report"],["WX58JXJ","37600","First South Yorks","Olive Grove","HJS","Y","2",46213,"Stopped Reporting since last report"],["WX58JXL","37602","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX58JXM","37603","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX58JXN","37604","First South Yorks","Olive Grove","HJS","Y","3",null,""],
+["WX58JXR","37607","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX58JXV","37611","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX58JXW","37612","First West of England","Lawrence Hill","HJS","Y","2",46213,"Stopped Reporting since last report"],["WX58JXY","37613","First Essex","Colchester","HJS","N","0",45668,""],["WX58JXZ","37614","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX58JYB","37616","First West of England","Lawrence Hill","HJS","Y","4",null,""],
+["WX58JYC","37617","First West of England","Lawrence Hill","HJS","N","0",46153,""],["WX58JYD","37618","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX58JYE","37619","First West of England","Lawrence Hill","HJS","N","0",46045,""],["WX58JYG","37621","First Essex","Colchester","HJS","N","0",46073,""],["WX58JYH","37622","First West of England","Lawrence Hill","HJS","Y","3",null,""],["WX58JYJ","37623","First West of England","Lawrence Hill","HJS","Y","3",null,""],
+["WX58JYK","37624","First West of England","Lawrence Hill","HJS","Y","4",null,""],["WX58JYL","37625","First West of England","Lawrence Hill","HJS","N","0",46171,"Removed from CVRAS Approval since last report"],["WX58JYP","37628","First West of England","Lawrence Hill","HJS","N","0",46171,"Removed from CVRAS Approval since last report"],["WX58JYR","37629","First West of England","Weston-super-Mare","HJS","Y","3",null,""],["WX58JYS","37630","First West of England","Weston-super-Mare","HJS","Y","4",null,""],["WX58JYT","37631","First West of England","Lawrence Hill","HJS","N","0",46153,""],
+["WX58JYU","37632","First West of England","Lawrence Hill","HJS","N","0",46143,""],["WX59BYM","","First Essex","Chelmsford","HJS","N","0",45668,""],["WX59BYN","","First West of England","Olive Grove Training","HJS","N","0",45668,""],["WX59BYR","69439","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX59BYS","69440","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX59BYT","69441","First West Yorkshire","Bramley","HJS","N","0",45668,""],
+["WX59BYU","69442","First South Yorks","Olive Grove","HJS","Y","3",null,""],["WX59BYV","69443","First Eastern Counties","Norwich","HJS","N","0",45905,""],["WX59BYY","69445","First South Yorks","Olive Grove","HJS","Y","3",null,""],["WX59BYZ","69446","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX59BZA","69447","First South Yorks","Olive Grove","HJS","Y","2",46186,""],["WX59BZB","69448","First West of England","Weston-super-Mare","HJS","N","0",46073,""],
+["WX59BZC","69449","First West of England","Hengrove","HJS","Y","4",null,""],["WX59BZD","69450","First South West","Taunton","HJS","N","0",45905,""],["WX59BZE","69451","First York","York","HJS","Y","4",null,""],["WX59BZG","69453","First South Yorks","Olive Grove","HJS","Y","4",null,""],["WX59BZH","69454","First South Yorks","Olive Grove","HJS","Y","3",null,""],["WX59BZK","69456","First York","York","HJS","N","0",45919,""],
+["WX59BZL","69457","First Hants, Dorset & Berkshire","Weymouth","HJS","N","0",45668,""],["WX59BZM","69458","First West of England","Bath and Wells","HJS","Y","4",null,""],["WX59BZO","69460","First South Yorks","Doncaster","HJS","Y","3",null,""],["YJ07LWE","66997","First West Yorkshire","Huddersfield","HJS","Y","4",null,""],["YJ07LWF","66998","First West Yorkshire","Bramley Training","HJS","N","0",46045,""],["YJ07WFR","69249","First West of England","Bath and Wells","HJS","Y","3",null,""],
+["YJ07WFS","69250","First West of England","Lawrence Hill Training","HJS","N","0",46073,""],["YJ07WFT","69251","First West of England","Lawrence Hill Training","HJS","N","0",46003,""],["YJ07WFU","69252","First West of England","Lawrence Hill Training","HJS","N","0",45668,""],["YJ07WFV","69253","First West of England","Weston-super-Mare","HJS","N","0",46171,"Removed from CVRAS Approval since last report"],["YJ08CDK","69331","First South Yorks","Olive Grove Training","HJS","Y","4",null,""],["YJ08CDN","69332","First South Yorks","Olive Grove Training","HJS","Y","3",null,""],
+["YJ08CDO","69333","First Midlands","Worcester Training","HJS","N","0",45668,""],["YJ08CDY","69337","York Pullman","","HJS","N","0",45737,""],["YJ08CDY","YJ08 CDY","York Pullman","","HJS","N","0",45737,""],["YJ08CEN","69342","York Pullman","Bramley","HJS","Y","4",null,""],["YJ08GVE","37071","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GVF","37072","First West Yorkshire","Bradford","Eminox","Y","3",null,""],
+["YJ08GVG","37073","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GVK","37074","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GVL","37075","First West Yorkshire","Hunslet","Eminox","N","0",46143,""],["YJ08GVM","37076","First West Yorkshire","Hunslet","Eminox","N","0",46143,""],["YJ08GVN","37077","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["YJ08GVO","37078","First West Yorkshire","Bramley","Eminox","Y","3",null,""],
+["YJ08GVP","37079","First West Yorkshire","Bramley","Eminox","Y","3",null,""],["YJ08GVR","37080","First West Yorkshire","Bradford","Eminox","Y","2",46199,""],["YJ08GVT","37081","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GVU","37082","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GVV","37083","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],["YJ08GVW","37084","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],
+["YJ08GVX","37085","First West Yorkshire","Huddersfield","Eminox","Y","4",null,""],["YJ08GVY","37086","First West Yorkshire","Huddersfield","Eminox","Y","3",null,""],["YJ08GVZ","37087","First West Yorkshire","Huddersfield","Eminox","Y","4",null,""],["YJ08GWA","37088","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWD","37090","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWE","37091","First West Yorkshire","Bradford","Eminox","Y","4",null,""],
+["YJ08GWF","37092","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWG","37093","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWL","37095","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWM","37096","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ08GWN","37097","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWO","37098","First West Yorkshire","Bradford","Eminox","Y","3",null,""],
+["YJ08GWP","37099","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWU","37100","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWV","37101","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ08GWW","37102","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ08XXW","69379","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YJ08XYC","69364","First South Yorks","Doncaster","Eminox","Y","4",null,""],
+["YJ08XYD","69365","First South Yorks","Doncaster","Eminox","Y","4",null,""],["YJ08XYR","69376","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YJ08XYS","69377","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YJ08XYT","69378","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YJ09FVF","37685","First West of England","Hengrove","Eminox","N","0",46143,""],["YJ09FVG","37676","First West of England","Bath and Wells","Eminox","N","0",46143,""],
+["YJ09FVH","37677","First West of England","Bath and Wells","Eminox","N","0",46073,""],["YJ09FVK","37678","First West of England","Hengrove","Eminox","Y","3",null,""],["YJ09FVL","37679","First West of England","Hengrove","Eminox","Y","3",null,""],["YJ09FVN","37681","First West Yorkshire","Huddersfield","Eminox","Y","2",46186,""],["YJ09FWM","69317","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YJ09FWO","69319","First West Yorkshire","","HJS","N","0",45793,""],
+["YJ09FWZ","69412","First West Yorkshire","Bramley","HJS","Y","4",null,""],["YJ09FXC","69415","First West Yorkshire","Hunslet","HJS","N","0",45933,""],["YJ09FXD","69416","First West Yorkshire","Hunslet","HJS","N","0",46017,""],["YJ09FXF","69418","First West Yorkshire","Hunslet","HJS","N","0",45668,""],["YJ09FXG","69419","First West Yorkshire","Hunslet","HJS","Y","4",null,""],["YJ09NYA","69466","First West Yorkshire","Halifax","Eminox","Y","3",null,""],
+["YJ09NYB","69467","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ09NYC","69468","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ09NYD","69469","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ09NYF","69470","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ09NYG","69471","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ09NYH","69472","York Pullman","","Eminox","N","0",45919,""],
+["YJ09NYK","69473","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ09NYM","69474","York Pullman","","Eminox","N","0",45807,""],["YJ09NYP","69477","First West Yorkshire","Bradford","HJS","Y","4",null,""],["YJ09NYR","69478","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["YJ09NYS","69479","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ09NYT","69480","First West Yorkshire","Hunslet","HJS","N","0",46115,""],
+["YJ09NYU","69481","First West Yorkshire","Hunslet","HJS","N","0",46115,""],["YJ09NYV","69482","First West Yorkshire","Hunslet","HJS","N","0",45668,""],["YJ09NYW","69483","First West Yorkshire","Halifax","HJS","Y","3",null,""],["YJ09NYX","69484","First West Yorkshire","Halifax","HJS","Y","4",null,""],["YJ09NYY","69485","First West Yorkshire","Halifax","HJS","Y","3",null,""],["YJ09OAV","37701","First West Yorkshire","Halifax","Eminox","Y","3",null,""],
+["YJ09OAW","37702","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ09OAX","37703","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ09OAZ","37705","First West Yorkshire","Bradford","Eminox","Y","2",46199,""],["YJ09OBA","37706","First West Yorkshire","Huddersfield","Eminox","Y","2",46213,"Stopped Reporting since last report"],["YJ09OBB","37707","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ09OBC","37708","First West Yorkshire","Bradford","Eminox","Y","2",46213,"Stopped Reporting since last report"],
+["YJ09OBG","37712","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ09OBH","37713","First West Yorkshire","Halifax","Eminox","Y","2",46186,""],["YJ09OBK","37714","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ09OBL","37715","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["YJ09OBM","37716","First West Yorkshire","Hunslet","Eminox","Y","4",null,""],["YJ09OBN","37717","First West Yorkshire","Huddersfield","Eminox","N","0",46059,""],
+["YJ09OBP","37719","First West Yorkshire","Huddersfield","Eminox","Y","3",null,""],["YJ09OBY","37727","First West Yorkshire","Huddersfield","Eminox","N","0",46073,""],["YJ09OBZ","37728","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ09OCB","37730","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ09OCC","","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],["YJ09OCD","37732","First West Yorkshire","Bradford","Eminox","Y","4",null,""],
+["YJ09OCE","37733","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ09OCF","37734","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ09OCG","37735","First West Yorkshire","Bramley","Eminox","N","0",46153,""],["YJ57YSL","69269","York Pullman","","HJS","N","0",45905,""],["YJ57YSO","69277","York Pullman","York","Eminox","N","0",45668,""],["YJ57YSR","69279","York Pullman","York","Eminox","N","0",45668,""],
+["YJ58GMO","37361","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ58GMU","37363","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["YJ58GMV","37365","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ58GNP","37360","First West Yorkshire","Halifax","Eminox","Y","2",46199,""],["YJ58GNV","37364","First West Yorkshire","Halifax","Eminox","Y","4",null,""],["YJ58GNX","37366","First West Yorkshire","Halifax","Eminox","Y","3",null,""],
+["YJ58RNN","37645","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["YJ58RNO","37646","First West Yorkshire","Bramley","Eminox","N","0",45919,""],["YJ58RNU","37647","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RNV","37648","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RNX","37649","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RNY","37650","First West Yorkshire","Bramley","Eminox","N","0",45668,""],
+["YJ58RNZ","37651","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58ROH","37652","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58ROU","37653","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RPO","37654","First West Yorkshire","Hunslet","Eminox","Y","2",46199,""],["YJ58RPU","37655","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RPV","37656","First West Yorkshire","Bramley","Eminox","N","0",45668,""],
+["YJ58RPX","37657","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["YJ58RPY","37658","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RRO","37660","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RRU","37661","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RRV","37662","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RRX","37663","First West Yorkshire","Bramley","Eminox","N","0",46073,""],
+["YJ58RRY","37664","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RRZ","37665","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YJ58RSO","37666","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["YJ58RSU","37667","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ58RSX","37669","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YJ58RSY","37670","First West Yorkshire","Bradford","Eminox","Y","3",null,""],
+["YJ58RVA","69315","York Pullman","","Eminox","N","0",45905,""],["YJ59KSO","37752","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ59KSU","37753","First West Yorkshire","Bradford","Eminox","Y","4",null,""],["YJ59KSV","37754","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YJ59KSY","37755","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["YJ59KSZ","37756","First South Yorks","Doncaster","Eminox","Y","3",null,""],
+["YK07AYJ","37111","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YK07AYN","37114","First South Yorks","Doncaster","Eminox","Y","4",null,""],["YK07AYY","37123","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YK07AYZ","37124","First West Yorkshire","Hunslet","Eminox","N","0",45779,""],["YK54ENL","69001","First York","York Training","Eminox","Y","2",46186,""],["YK57EZS","37063","First West Yorkshire","Bramley","Eminox","Y","4",null,""],
+["YK57EZT","37064","First West Yorkshire","Bramley","Eminox","Y","3",null,""],["YK57FAA","","First West Yorkshire","Bramley","Eminox","N","0",45668,""],["YK57FCL","66999","First West Yorkshire","Bramley","HJS","N","0",46157,""],["YN07MKD","37246","First West Yorkshire","Huddersfield","Eminox","N","0",46143,""],["YN07MKE","37247","First West Yorkshire","Huddersfield","Eminox","N","0",46073,""],["YN07MKF","","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],
+["YN07MKG","37249","First West Yorkshire","Huddersfield","Eminox","N","0",46143,""],["YN07MKJ","37250","First West Yorkshire","Huddersfield","Eminox","Y","2",46213,""],["YN07MKL","37252","First West of England","Bath and Wells","Eminox","Y","2",46199,""],["YN07MLL","37263","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN07MLO","37264","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08LCK","37230","First South Yorks","Doncaster","Eminox","N","0",46143,""],
+["YN08LCM","37234","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YN08LCO","37235","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YN08LCP","37237","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YN08LCU","37239","First West of England","Bath and Wells","Eminox","N","0",46158,""],["YN08NLL","37472","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NLM","37473","First South Yorks","Olive Grove","Eminox","Y","4",null,""],
+["YN08NLO","37474","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NLP","37475","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NLR","37476","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NLT","37477","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YN08NLV","37479","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NLX","37480","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["YN08NLY","37481","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NLZ","37482","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NMA","37483","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NMF","37485","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NMJ","37486","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NMK","37487","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["YN08NMM","37488","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YN08NMV","37490","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NMX","37491","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08NMY","37492","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08PLF","37493","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08PLO","37495","First South Yorks","Olive Grove","Eminox","Y","4",null,""],
+["YN08PLX","37498","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN08PLZ","37499","First South Yorks","Olive Grove","Eminox","N","0",46157,""],["YN08PMU","37501","First West Yorkshire","Bradford","Eminox","Y","3",null,""],["YN08PMV","37502","First West Yorkshire","Huddersfield","Eminox","Y","3",null,""],["YN08PMX","","First West Yorkshire","Huddersfield","Eminox","N","0",45668,""],["YN08PMY","37504","First West Yorkshire","Bradford","Eminox","Y","3",null,""],
+["YN08PNE","37505","First West Yorkshire","Halifax","Eminox","Y","3",null,""],["YN08PNF","37506","First West Yorkshire","Hunslet","Eminox","N","0",45668,""],["YN09HFH","69461","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YN09HFK","69463","First South Yorks","Doncaster","Eminox","Y","4",null,""],["YN09HFL","69464","First South Yorks","Doncaster","Eminox","Y","4",null,""],["YN09HFM","69465","First South Yorks","Doncaster","Eminox","Y","4",null,""],
+["YN57RJZ","37232","First South Yorks","Doncaster","Eminox","Y","2",46213,"Stopped Reporting since last report"],["YN57RKA","37233","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YN57RKJ","37236","First South Yorks","Doncaster","Eminox","Y","3",null,""],["YN58ERY","37497","First South Yorks","Olive Grove","Eminox","N","0",46171,"Removed from CVRAS Approval since last report"],["YN58ERZ","37509","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ESF","37510","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["YN58ESG","37511","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ESO","37512","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ESU","37513","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ESV","37514","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YN58ESY","37515","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YN58ETA","37516","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["YN58ETD","37517","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETE","37518","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETF","37519","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETJ","37520","First South Yorks","Olive Grove","Eminox","Y","2",46186,""],["YN58ETK","37521","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETL","37522","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["YN58ETO","37523","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETR","37524","First South Yorks","Olive Grove","Eminox","Y","4",null,""],["YN58ETU","37526","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETV","37527","First South Yorks","Olive Grove","Eminox","Y","3",null,""],["YN58ETX","37528","First South Yorks","Olive Grove","Eminox","Y","2",46213,"Stopped Reporting since last report"],["YN58ETY","37529","First South Yorks","Olive Grove","Eminox","Y","3",null,""],
+["YN62GXS","","First Hants, Dorset & Berkshire","Slough","Eminox","Y","1",null,""],["YT09BJY","36092","First West of England","Keynsham","Eminox","N","0",46143,""],["YX09AHD","44917","First Hants, Dorset & Berkshire","Hilsea","Eminox","Y","4",null,""],["YX09HKO","","First Eastern Counties","Lowestoft","Proventia","N","0",45835,""],["YX11AFK","","First Essex","Chelmsford","HJS","N","0",45668,""],["YX11AFN","","First Essex","Chelmsford","HJS","N","0",45668,""],
+["YX11AFO","","First Essex","Chelmsford","HJS","N","0",45668,""],["YX11AFU","","First Essex","Chelmsford","HJS","N","0",45668,""],["YX11AFV","","First Essex","Chelmsford","HJS","N","0",45668,""],["YX11AFY","","First Essex","Chelmsford","HJS","N","0",45668,""],["YX11AFZ","","First Essex","Chelmsford","HJS","N","0",45668,""],["YX11AGO","","First Essex","Chelmsford","HJS","N","0",45668,""],
+["YX13AEW","44553","First West of England","Bath and Wells","HJS","N","0",46115,""],["YX13AEY","44554","First West of England","Bath and Wells","HJS","Y","4",null,""],["YX13AFA","44556","First West of England","Bath and Wells","HJS","Y","4",null,""],["YX62DVM","44520","First West of England","Bath and Wells","HJS","N","0",46153,""],["YX62DWG","44521","First West of England","Bath and Wells","HJS","Y","4",null,""],["YX62DWM","44522","First West of England","Bath and Wells","HJS","Y","3",null,""],
+["YX62DWO","44523","First West of England","Bath and Wells","HJS","Y","4",null,""],["YX62DXC","44524","First West of England","Bath and Wells","HJS","Y","3",null,""],["YX62DXF","44525","First West of England","Bath and Wells","HJS","Y","3",null,""],["YX62DXH","44526","First West of England","Bath and Wells","HJS","Y","4",null,""],["YY63WBT","20810","First Hants, Dorset & Berkshire","Slough","Eminox","Y","4",null,""],["YY63WBU","20811","First Hants, Dorset & Berkshire","Slough","Eminox","Y","4",null,""]
+];
+
+// Locate the "CVRAS List" sheet, find the header row, map columns by name,
+// and read data rows until the first row with a blank VRM.
+function parseWorkbook(workbook) {
+  const sheetName = workbook.SheetNames.find(
+    n => n.trim().toLowerCase() === "cvras list"
+  );
+  if (!sheetName) {
+    throw new Error('Could not find a "CVRAS List" sheet in this workbook.');
+  }
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+
+  let headerRowIdx = -1;
+  let headerRow = null;
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const row = rows[i];
+    if (row.some(cell => String(cell).trim().toLowerCase() === "vrm")) {
+      headerRowIdx = i;
+      headerRow = row;
+      break;
+    }
+  }
+  if (headerRowIdx === -1) {
+    throw new Error('Could not find header row (looking for a "VRM" column) in the CVRAS List sheet.');
+  }
+
+  const colIndex = {};
+  headerRow.forEach((cell, idx) => {
+    const key = String(cell).trim();
+    if (key) colIndex[key] = idx;
+  });
+
+  function findCol(name) {
+    if (colIndex[name] !== undefined) return colIndex[name];
+    const target = name.trim().toLowerCase();
+    for (const k of Object.keys(colIndex)) {
+      if (k.trim().toLowerCase() === target) return colIndex[k];
+    }
+    return undefined;
+  }
+
+  const cols = {
+    vrm: findCol("VRM"),
+    fleetNo: findCol("Fleet No."),
+    operator: findCol("Operator"),
+    depot: findCol("Depot"),
+    retrofit: findCol("Retrofit Supplier"),
+    caz: findCol("CAZ Exemption"),
+    status: findCol("Latest Status"),
+    removalDate: findCol("CVRAS Removal Date"),
+    newFailure: findCol("New Failure Status Since Last Report")
+  };
+
+  if (cols.vrm === undefined || cols.status === undefined) {
+    throw new Error('CVRAS List sheet is missing the expected "VRM" or "Latest Status" columns.');
+  }
+
+  const cell = (row, idx) => (idx !== undefined ? row[idx] : "");
+
+  const records = [];
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    const vrm = String(cell(row, cols.vrm) ?? "").trim();
+    if (!vrm) break;
+
+    const statusRaw = String(cell(row, cols.status) ?? "").trim();
+    const statusCode = statusRaw.charAt(0);
+
+    let depot = String(cell(row, cols.depot) ?? "").trim();
+    if (!depot) depot = "(No Depot Assigned)";
+
+    let removalDate = null;
+    const rdVal = cell(row, cols.removalDate);
+    if (rdVal instanceof Date) {
+      removalDate = rdVal;
+    } else if (typeof rdVal === "number" && rdVal > 0) {
+      removalDate = excelSerialToDate(rdVal);
+    }
+
+    records.push({
+      vrm,
+      fleetNo: String(cell(row, cols.fleetNo) ?? "").trim(),
+      operator: String(cell(row, cols.operator) ?? "").trim(),
+      depot,
+      retrofit: String(cell(row, cols.retrofit) ?? "").trim(),
+      caz: String(cell(row, cols.caz) ?? "").trim(),
+      status: statusCode,
+      removalDate,
+      newFailure: String(cell(row, cols.newFailure) ?? "").trim()
+    });
+  }
+  return records;
+}
+
+// Group records into Map<depotName, { total, statuses: { "0":[...], ..., "4":[...], _other:[...] } }>
+function groupData(records) {
+  const depotMap = new Map();
+  for (const rec of records) {
+    if (!depotMap.has(rec.depot)) {
+      depotMap.set(rec.depot, {
+        total: 0,
+        statuses: { "0": [], "1": [], "2": [], "3": [], "4": [], "_other": [] }
+      });
+    }
+    const group = depotMap.get(rec.depot);
+    group.total++;
+    if (group.statuses[rec.status]) {
+      group.statuses[rec.status].push(rec);
+    } else {
+      group.statuses["_other"].push(rec);
+    }
+  }
+  return depotMap;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatDate(d) {
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function renderSummary(records) {
+  const counts = { total: records.length, "0": 0, "1": 0, "2": 0, "3": 0, "4": 0 };
+  records.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
+
+  const bar = document.getElementById("statsBar");
+  bar.innerHTML = `
+    <div class="stat-card total"><div class="num">${counts.total}</div><div class="lbl">Total Vehicles</div></div>
+    ${STATUS_ORDER.map(code => `
+      <div class="stat-card s${code}">
+        <div class="num">${counts[code]}</div>
+        <div class="lbl">${escapeHtml(STATUS_CONFIG[code].short)}</div>
+      </div>`).join("")}
+  `;
+}
+
+function renderDepots(depotMap) {
+  const container = document.getElementById("depots");
+  container.innerHTML = "";
+
+  let depotNames = Array.from(depotMap.keys()).sort((a, b) => a.localeCompare(b));
+  const noDepotIdx = depotNames.indexOf("(No Depot Assigned)");
+  if (noDepotIdx !== -1) {
+    depotNames.splice(noDepotIdx, 1);
+    depotNames.push("(No Depot Assigned)");
+  }
+
+  document.getElementById("emptyState").style.display = depotNames.length === 0 ? "block" : "none";
+
+  for (const depotName of depotNames) {
+    container.appendChild(buildDepotCard(depotName, depotMap.get(depotName)));
+  }
+}
+
+function buildDepotCard(depotName, group) {
+  const renderOrder = [...STATUS_ORDER, "_other"];
+
+  const card = document.createElement("div");
+  card.className = "depot-card";
+
+  const header = document.createElement("div");
+  header.className = "depot-header";
+  header.innerHTML = `
+    <h2>${escapeHtml(depotName)}</h2>
+    <div class="depot-counts">
+      <span><strong>${group.total}</strong> vehicles</span>
+      ${renderOrder.filter(c => group.statuses[c].length > 0).map(c =>
+        `<span class="badge status-${c === "_other" ? "_other" : c}" style="${c === "_other" ? `background:${STATUS_CONFIG._other.color}` : ""}">${escapeHtml(STATUS_CONFIG[c].short)}: ${group.statuses[c].length}</span>`
+      ).join("")}
+    </div>
+  `;
+
+  const body = document.createElement("div");
+  body.className = "depot-body";
+
+  header.addEventListener("click", () => body.classList.toggle("collapsed"));
+
+  for (const code of renderOrder) {
+    const vehicles = group.statuses[code];
+    if (vehicles.length === 0) continue;
+    body.appendChild(buildStatusGroup(depotName, code, vehicles));
+  }
+
+  card.appendChild(header);
+  card.appendChild(body);
+  return card;
+}
+
+function buildStatusGroup(depotName, statusCode, vehicles) {
+  const cfg = STATUS_CONFIG[statusCode];
+  const wrap = document.createElement("div");
+  wrap.className = `status-group status-${statusCode === "_other" ? "_other" : statusCode}`;
+  if (statusCode === "_other") wrap.style.borderLeftColor = cfg.color;
+
+  const header = document.createElement("div");
+  header.className = "status-header";
+  header.innerHTML = `
+    <span class="status-title">
+      <span class="toggle-icon">&#9656;</span>
+      ${escapeHtml(cfg.label)}
+      <span class="badge status-${statusCode === "_other" ? "_other" : statusCode}" style="${statusCode === "_other" ? `background:${cfg.color}` : ""}">${vehicles.length}</span>
+    </span>
+    <span class="status-actions">
+      <button type="button" class="btn email">Email</button>
+      <button type="button" class="btn copy">Copy</button>
+    </span>
+  `;
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "vehicle-table-wrap collapsed";
+  tableWrap.appendChild(buildVehicleTable(vehicles));
+
+  const toggleIcon = header.querySelector(".toggle-icon");
+  const titleSpan = header.querySelector(".status-title");
+  titleSpan.addEventListener("click", () => {
+    tableWrap.classList.toggle("collapsed");
+    toggleIcon.classList.toggle("open");
+  });
+
+  header.querySelector(".btn.email").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openEmail(depotName, statusCode, vehicles);
+  });
+  header.querySelector(".btn.copy").addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyEmailBody(depotName, statusCode, vehicles, e.currentTarget);
+  });
+
+  wrap.appendChild(header);
+  wrap.appendChild(tableWrap);
+  return wrap;
+}
+
+function buildVehicleTable(vehicles) {
+  const table = document.createElement("table");
+  table.className = "vehicle-table";
+
+  const showRemoval = vehicles.some(v => v.removalDate);
+  const showFailure = vehicles.some(v => v.newFailure);
+
+  const headers = ["VRM", "Fleet No.", "Operator", "Depot", "Retrofit Supplier", "CAZ Exempt"];
+  if (showRemoval) headers.push("CVRAS Removal Date");
+  if (showFailure) headers.push("New Failure Status");
+
+  const thead = document.createElement("thead");
+  thead.innerHTML = `<tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const v of vehicles) {
+    const cells = [v.vrm, v.fleetNo || "-", v.operator, v.depot, v.retrofit || "-", v.caz || "-"];
+    if (showRemoval) cells.push(v.removalDate ? formatDate(v.removalDate) : "-");
+    if (showFailure) cells.push(v.newFailure || "-");
+    const tr = document.createElement("tr");
+    tr.innerHTML = cells.map(c => `<td>${escapeHtml(String(c))}</td>`).join("");
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+function buildEmailContent(depotName, statusCode, vehicles) {
+  const cfg = STATUS_CONFIG[statusCode];
+  const count = vehicles.length;
+  const plural = count === 1 ? "" : "s";
+  const dateStr = new Date().toLocaleDateString("en-GB");
+
+  const intros = {
+    "0": `URGENT: ${count} vehicle${plural} at ${depotName} have had their CVRAS/CAZ approval REMOVED and are no longer compliant for Clean Air Zone exemption. Please action urgently, as these vehicles may incur CAZ charges if operated in a Clean Air Zone.`,
+    "1": `${count} vehicle${plural} at ${depotName} are reporting "No Telematics" status. Telematics data is not being received and this needs investigation to confirm the unit is fitted, working, and reporting correctly.`,
+    "2": `${count} vehicle${plural} at ${depotName} currently have no NOx conversion (retrofit) fitted. A retrofit needs to be scheduled for these vehicles to maintain CAZ compliance.`,
+    "3": `${count} vehicle${plural} at ${depotName} have a NOx conversion retrofit fitted, but it is reporting low / underperforming NOx conversion. These vehicles need investigation, possibly by the retrofit supplier.`,
+    "4": `${count} vehicle${plural} at ${depotName} are currently OK and fully compliant on the CVRAS Master List. This email is for information only - no action is required.`,
+    "_other": `${count} vehicle${plural} at ${depotName} have an unrecognised CVRAS status (${cfg.label}) and may need review.`
+  };
+
+  const subjects = {
+    "0": `URGENT - CVRAS Approval Removed - ${depotName} (${count} vehicle${plural})`,
+    "1": `Action Needed - No Telematics Reporting - ${depotName} (${count} vehicle${plural})`,
+    "2": `Action Needed - NOx Conversion Required - ${depotName} (${count} vehicle${plural})`,
+    "3": `Action Needed - Low NOx Conversion - ${depotName} (${count} vehicle${plural})`,
+    "4": `Information - CVRAS OK Status - ${depotName} (${count} vehicle${plural})`,
+    "_other": `CVRAS Status Review - ${depotName} (${count} vehicle${plural})`
+  };
+
+  const lines = [];
+  lines.push(`CVRAS Status Report - ${depotName}`);
+  lines.push(`Status: ${cfg.label}`);
+  lines.push(`Report Date: ${dateStr}`);
+  lines.push("");
+  lines.push(intros[statusCode] || intros["_other"]);
+  lines.push("");
+  lines.push("Vehicles:");
+  lines.push("");
+
+  for (const v of vehicles) {
+    let line = `- VRM: ${v.vrm} | Fleet No: ${v.fleetNo || "N/A"} | Operator: ${v.operator} | Retrofit: ${v.retrofit || "N/A"}`;
+    if (v.removalDate) line += ` | Removal Date: ${formatDate(v.removalDate)}`;
+    if (v.newFailure) line += ` | New Failure: ${v.newFailure}`;
+    lines.push(line);
+  }
+
+  lines.push("");
+  lines.push("---");
+  lines.push("Generated by CVRAS Dashboard");
+
+  return { subject: subjects[statusCode] || subjects["_other"], body: lines.join("\n") };
+}
+
+function openEmail(depotName, statusCode, vehicles) {
+  const { subject, body } = buildEmailContent(depotName, statusCode, vehicles);
+  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const a = document.createElement("a");
+  a.href = mailto;
+  a.click();
+}
+
+function copyEmailBody(depotName, statusCode, vehicles, btnEl) {
+  const { body } = buildEmailContent(depotName, statusCode, vehicles);
+
+  function showCopied() {
+    const original = btnEl.textContent;
+    btnEl.textContent = "Copied!";
+    btnEl.classList.add("copied");
+    setTimeout(() => {
+      btnEl.textContent = original;
+      btnEl.classList.remove("copied");
+    }, 1500);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(body).then(showCopied).catch(() => fallbackCopy(body, showCopied));
+  } else {
+    fallbackCopy(body, showCopied);
+  }
+}
+
+function fallbackCopy(text, onSuccess) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+    onSuccess();
+  } catch (e) {
+    alert("Could not copy to clipboard.");
+  }
+  document.body.removeChild(ta);
+}
+
+let currentRecords = [];
+
+function renderAll(records) {
+  renderSummary(records);
+  renderDepots(groupData(records));
+}
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: "array", cellDates: true });
+      const records = parseWorkbook(workbook);
+      currentRecords = records;
+      document.getElementById("fileMeta").textContent =
+        `Loaded: ${file.name} - ${records.length} vehicle rows`;
+      renderAll(currentRecords);
+    } catch (err) {
+      alert("Failed to parse file: " + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function init() {
+  currentRecords = decodeEmbedded(EMBEDDED_DATA);
+  document.getElementById("fileMeta").textContent =
+    `Showing embedded sample data - ${currentRecords.length} vehicle rows (First Bus Telematics Report 08/06/2026)`;
+  renderAll(currentRecords);
+
+  const dropZone = document.getElementById("dropZone");
+  const fileInput = document.getElementById("fileInput");
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
